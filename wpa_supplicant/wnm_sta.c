@@ -14,6 +14,7 @@
 #include "wpa_supplicant_i.h"
 #include "driver_i.h"
 #include "scan.h"
+#include "bss.h"
 
 #define MAX_TFS_IE_LEN  1024
 
@@ -339,6 +340,8 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
 	u8 dialog_token;
 	u8 mode;
 	u16 disassoc_timer;
+	const u8 *bssid;
+	struct wpa_bss *bss;
 
 	if (pos + 5 > end)
 		return;
@@ -378,12 +381,43 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
 		}
 	}
 
-	if (reply) {
-		/* TODO: add support for reporting Accept */
+	if (!reply) {
+		return;
+	}
+
+	/* Check if a NEIGHBOR report is included, otherwise scan and bail. */
+	if (!(mode & 0x01 && pos[0] == WLAN_EID_NEIGHBOR_REPORT && pos[1] > 8)) {
+		wpa_supplicant_req_scan(wpa_s, 0, 0);
+		return;
+	}
+
+	bssid = pos+2;		
+	wpa_printf(MSG_DEBUG, "WNM: We are told to roam to " MACSTR, MAC2STR(bssid));
+
+
+	/* This assumes that the BSS is already in the scan buffer */	
+	bss = wpa_bss_get_bssid(wpa_s, bssid);
+	if (!bss) {
+		wpa_printf(MSG_INFO, "WNM: Target AP not found "
+			   "in BSS table");
 		wnm_send_bss_transition_mgmt_resp(wpa_s, dialog_token,
-						  1 /* Reject - unspecified */,
+						  WNM_TRANS_REJECT_INSUFFICIENT_BEACONS,
 						  0, NULL);
 	}
+
+	if (!wpa_s->current_ssid) {
+		wpa_msg(wpa_s, MSG_INFO, "WNM: No active association "
+			"while getting BSS-TRANS-MGMT-REQ");
+		return;
+	}
+
+	/* We're okay. Let's notify the AP and roam! */
+	wnm_send_bss_transition_mgmt_resp(wpa_s, dialog_token,
+					  WNM_TRANS_ACCEPT,
+					  0, bssid);
+
+	wpa_s->reassociate = 1;
+	wpa_supplicant_connect(wpa_s, bss, wpa_s->current_ssid);
 }
 
 
