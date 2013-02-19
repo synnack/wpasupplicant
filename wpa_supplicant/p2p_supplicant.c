@@ -106,8 +106,12 @@ static void wpas_p2p_scan_res_handler(struct wpa_supplicant *wpa_s,
 
 	for (i = 0; i < scan_res->num; i++) {
 		struct wpa_scan_res *bss = scan_res->res[i];
+		struct os_time time_tmp_age, entry_ts;
+		time_tmp_age.sec = bss->age / 1000;
+		time_tmp_age.usec = (bss->age % 1000) * 1000;
+		os_time_sub(&scan_res->fetch_time, &time_tmp_age, &entry_ts);
 		if (p2p_scan_res_handler(wpa_s->global->p2p, bss->bssid,
-					 bss->freq, bss->age, bss->level,
+					 bss->freq, &entry_ts, bss->level,
 					 (const u8 *) (bss + 1),
 					 bss->ie_len) > 0)
 			break;
@@ -5359,10 +5363,29 @@ int wpas_p2p_disconnect(struct wpa_supplicant *wpa_s)
 
 int wpas_p2p_in_progress(struct wpa_supplicant *wpa_s)
 {
+	int ret;
+
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return 0;
 
-	return p2p_in_progress(wpa_s->global->p2p);
+	ret = p2p_in_progress(wpa_s->global->p2p);
+	if (ret == 0) {
+		/*
+		 * Check whether there is an ongoing WPS provisioning step (or
+		 * other parts of group formation) on another interface since
+		 * p2p_in_progress() does not report this to avoid issues for
+		 * scans during such provisioning step.
+		 */
+		if (wpa_s->global->p2p_group_formation &&
+		    wpa_s->global->p2p_group_formation != wpa_s) {
+			wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Another interface (%s) "
+				"in group formation",
+				wpa_s->global->p2p_group_formation->ifname);
+			ret = 1;
+		}
+	}
+
+	return ret;
 }
 
 

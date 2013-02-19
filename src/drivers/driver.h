@@ -187,10 +187,12 @@ struct wpa_scan_res {
  * struct wpa_scan_results - Scan results
  * @res: Array of pointers to allocated variable length scan result entries
  * @num: Number of entries in the scan result array
+ * @fetch_time: Time when the results were fetched from the driver
  */
 struct wpa_scan_results {
 	struct wpa_scan_res **res;
 	size_t num;
+	struct os_time fetch_time;
 };
 
 /**
@@ -909,6 +911,8 @@ struct hostapd_sta_add_params {
 	u32 flags; /* bitmask of WPA_STA_* flags */
 	int set; /* Set STA parameters instead of add */
 	u8 qosinfo;
+	const u8 *ext_capab;
+	size_t ext_capab_len;
 };
 
 struct hostapd_freq_params {
